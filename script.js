@@ -1,30 +1,26 @@
-// ===== إعدادات البوت والشات =====
-const BOT_TOKEN = "8770754568:AAExYFyI88GA8J3adDv1s6YL6ZVYtabxkb8"; // للاختبار المحلي فقط
+// إعدادات البوت والشات
+const BOT_TOKEN = "8770754568:AAExYFyI88GA8J3adDv1s6YL6ZVYtabxkb8";
 const PRIVATE_CHAT_ID = 8223130191;
-const CHANNEL_USERNAME = "@AaNnAn2"; // اختياري
+const CHANNEL_USERNAME = "@AaNnAn2"; // لو عايز تبعت للقناة باليوزر
 
-// لو عايز تستخدم دالة Serverless بدل الإرسال المباشر ضع true
-const USE_SERVERLESS = true;
-const FRONTEND_SEND_ENDPOINT = "/.netlify/functions/sendMessage"; // عدّل لو استخدمت Vercel أو مسار آخر
-
-// ===== إعدادات API =====
+// إعدادات API
 const COIN_ID = "the-open-network";
 const COINGECKO_URL = `https://api.coingecko.com/api/v3/simple/price?ids=${COIN_ID}&vs_currencies=usd`;
 const USD_EGP_URL = "https://api.exchangerate.host/latest?base=USD&symbols=EGP";
 
-// ===== عناصر DOM =====
+// عناصر DOM
 const cardsEl = document.getElementById("cards");
 const statusEl = document.getElementById("status");
 const refreshBtn = document.getElementById("refresh-btn");
 const sendBtn = document.getElementById("send-btn");
 const autoSendCheckbox = document.getElementById("auto-send");
 
-// ===== حالة التطبيق =====
+// حالة التخزين
 let lastFetched = { tonUSD: null, tonEGP: null };
-let selectedPriceUSD = null; // السعر اللي اختاره المستخدم
+let selectedPriceUSD = null; // السعر اللي اختاره المستخدم (قيمة ثابتة عند الضغط)
 let autoSendIntervalId = null;
 
-// ===== عرض البطاقة =====
+// عرض بطاقة TON مع عنصر قابل للنقر
 function renderTonCard(usd, egp) {
   const usdText = usd !== null ? Number(usd).toLocaleString(undefined,{maximumFractionDigits:6}) + " $" : "—";
   const egpText = egp !== null ? Number(egp).toLocaleString(undefined,{maximumFractionDigits:2}) + " ج.م" : "—";
@@ -45,9 +41,11 @@ function renderTonCard(usd, egp) {
     usdEl.innerText = Number(selectedPriceUSD).toLocaleString(undefined,{maximumFractionDigits:6}) + " $";
   }
 
-  // حدث النقر للاختيار/إلغاء الاختيار
+  // حدث النقر: يختار السعر الحالي (قيمة وقت الضغط) أو يلغي الاختيار
   usdEl.addEventListener("click", () => {
+    // لو مش محدد الآن -> نخزن القيمة الحالية المعروضة كاختيار
     if (!usdEl.classList.contains("selected")) {
+      // لو آخر قيمة موجودة نستخدمها
       if (lastFetched.tonUSD !== null) {
         selectedPriceUSD = lastFetched.tonUSD;
         usdEl.classList.add("selected");
@@ -57,8 +55,10 @@ function renderTonCard(usd, egp) {
         statusEl.innerText = "لا يوجد سعر حالي للاختيار";
       }
     } else {
+      // إلغاء الاختيار
       selectedPriceUSD = null;
       usdEl.classList.remove("selected");
+      // نعيد عرض آخر قيمة حقيقية (لو موجودة)
       if (lastFetched.tonUSD !== null) {
         usdEl.innerText = Number(lastFetched.tonUSD).toLocaleString(undefined,{maximumFractionDigits:6}) + " $";
       } else {
@@ -69,7 +69,7 @@ function renderTonCard(usd, egp) {
   });
 }
 
-// ===== جلب السعر =====
+// جلب السعر وتحديث العرض (لا يمسّ الاختيار إذا المستخدم اختار)
 async function getTonPrice() {
   try {
     statusEl.innerText = "جاري جلب سعر TON...";
@@ -84,11 +84,17 @@ async function getTonPrice() {
     const tonUSD = coinData[COIN_ID]?.usd ?? null;
     const tonEGP = (tonUSD !== null && usdToEgp !== null) ? (tonUSD * usdToEgp) : null;
 
+    // خزّن آخر قيمة حقيقية
     lastFetched.tonUSD = tonUSD;
     lastFetched.tonEGP = tonEGP;
 
-    // لو المستخدم لم يختر سعرًا نعرض آخر قيمة، وإلا نحتفظ بعلامة الاختيار
-    renderTonCard(tonUSD, tonEGP);
+    // لو المستخدم لم يختر سعرًا (selectedPriceUSD == null) نعرض آخر قيمة مباشرة
+    if (selectedPriceUSD === null) {
+      renderTonCard(tonUSD, tonEGP);
+    } else {
+      // لو المستخدم اختار، نعرض البطاقة لكن نحتفظ بعلامة الاختيار (renderTonCard يتعامل مع selectedPriceUSD)
+      renderTonCard(tonUSD, tonEGP);
+    }
 
     statusEl.innerText = "تم التحديث " + new Date().toLocaleTimeString();
     return { tonUSD, tonEGP };
@@ -100,96 +106,77 @@ async function getTonPrice() {
   }
 }
 
-// ===== إرسال السعر للبوت (يستخدم السعر المختار إن وُجد) =====
-async function sendTonToBotOnce() {
+// إرسال السعر: يرسل السعر المختار لو موجود، وإلا يرسل آخر سعر حقيقي
+async function sendTonToBot() {
   try {
+    statusEl.innerText = "جاري تجهيز الإرسال...";
+    // تأكد من وجود سعر (إما مختار أو آخر قيمة)
     const priceToSend = selectedPriceUSD !== null ? selectedPriceUSD : lastFetched.tonUSD;
     if (priceToSend === null) {
-      console.warn("لا يوجد سعر لإرساله");
-      return { ok: false, reason: "no_price" };
+      statusEl.innerText = "لا يوجد سعر لإرساله";
+      return;
     }
 
     const messageText = `سعر التون الحالي: ${priceToSend} $`;
+    const url = `https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`;
 
-    if (USE_SERVERLESS) {
-      // إرسال آمن عبر دالة Serverless
-      const resp = await fetch(FRONTEND_SEND_ENDPOINT, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: messageText, sendToChannel: false })
-      });
-      const json = await resp.json();
-      if (!resp.ok || !json.ok) {
-        console.warn("Serverless send failed:", resp.status, json);
-        return { ok: false, reason: "serverless_failed", details: json };
-      }
-      return { ok: true, via: "serverless" };
+    // إرسال للخاص
+    const respPrivate = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ chat_id: PRIVATE_CHAT_ID, text: messageText })
+    });
+    const jsonPrivate = await respPrivate.json();
+    if (!respPrivate.ok || !jsonPrivate.ok) {
+      console.warn("خطأ إرسال للخاص:", jsonPrivate);
+      statusEl.innerText = `فشل الإرسال للخاص - ${jsonPrivate.description || respPrivate.status}`;
+      return;
+    }
+
+    // محاولة إرسال للقناة باليوزر (قد يفشل لو القناة خاصة أو البوت ليس مشرف)
+    const respChannel = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ chat_id: CHANNEL_USERNAME, text: messageText })
+    });
+    const jsonChannel = await respChannel.json();
+    if (!respChannel.ok || !jsonChannel.ok) {
+      console.warn("خطأ إرسال للقناة:", jsonChannel);
+      statusEl.innerText = "✅ تم إرسال السعر للخاص — فشل الإرسال للقناة (راجع صلاحيات البوت أو استخدم chat_id)";
     } else {
-      // إرسال مباشر من المتصفح
-      const url = `https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`;
-      const r = await fetch(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ chat_id: PRIVATE_CHAT_ID, text: messageText })
-      });
-      const j = await r.json();
-      if (!r.ok || !j.ok) {
-        console.warn("Direct send failed:", r.status, j);
-        return { ok: false, reason: "direct_failed", details: j };
-      }
-      return { ok: true, via: "direct" };
+      statusEl.innerText = "✅ تم إرسال السعر للخاص والقناة";
     }
   } catch (err) {
-    console.error("sendTonToBotOnce error:", err);
-    return { ok: false, reason: "exception", details: err.message };
+    console.error("sendTonToBot error:", err);
+    statusEl.innerText = "خطأ أثناء الإرسال — افتح Console للمزيد";
   }
 }
 
-// ===== تحكم الإرسال التلقائي =====
-async function autoSendTick() {
-  // نجلب السعر أولًا (نحدّث lastFetched)
-  await getTonPrice();
-  // ثم نحاول الإرسال
-  const res = await sendTonToBotOnce();
-  if (res.ok) {
-    statusEl.innerText = `✅ تم إرسال السعر تلقائيًا (${res.via}) — ${new Date().toLocaleTimeString()}`;
-  } else {
-    // عرض سبب فشل الإرسال بشكل مختصر
-    if (res.reason === "no_price") statusEl.innerText = "لا يوجد سعر لإرساله تلقائيًا";
-    else statusEl.innerText = `فشل الإرسال التلقائي — ${res.reason}`;
-    console.warn("autoSendTick result:", res);
-  }
+// تحكم التحديث التلقائي (اختياري)
+let autoInterval = null;
+function startAutoUpdate(intervalMs = 30_000) {
+  if (autoInterval) clearInterval(autoInterval);
+  autoInterval = setInterval(() => getTonPrice(), intervalMs);
+}
+function stopAutoUpdate() {
+  if (autoInterval) clearInterval(autoInterval);
+  autoInterval = null;
 }
 
-function startAutoSend(intervalMs = 60_000) {
-  if (autoSendIntervalId) clearInterval(autoSendIntervalId);
-  // نفّذ فورًا ثم كل دقيقة
-  autoSendTick();
-  autoSendIntervalId = setInterval(autoSendTick, intervalMs);
-  statusEl.innerText = "التحديث والإرسال التلقائي مفعل كل دقيقة";
-}
-
-function stopAutoSend() {
-  if (autoSendIntervalId) clearInterval(autoSendIntervalId);
-  autoSendIntervalId = null;
-  statusEl.innerText = "التحديث التلقائي متوقف";
-}
-
-// ===== أحداث الأزرار والـ checkbox =====
+// أحداث الأزرار
 refreshBtn.addEventListener("click", getTonPrice);
-sendBtn.addEventListener("click", async () => {
-  statusEl.innerText = "جاري إرسال السعر المختار/الأخير...";
-  const r = await sendTonToBotOnce();
-  if (r.ok) statusEl.innerText = "✅ تم إرسال السعر يدوياً";
-  else statusEl.innerText = "فشل الإرسال اليدوي — افتح Console للمزيد";
-});
-
+sendBtn.addEventListener("click", sendTonToBot);
 if (autoSendCheckbox) {
   autoSendCheckbox.addEventListener("change", (e) => {
-    if (e.target.checked) startAutoSend(60_000);
-    else stopAutoSend();
+    if (e.target.checked) {
+      startAutoUpdate(60_000); // كل دقيقة
+      statusEl.innerText = "التحديث التلقائي مفعل كل دقيقة";
+    } else {
+      stopAutoUpdate();
+      statusEl.innerText = "التحديث التلقائي متوقف";
+    }
   });
 }
 
-// ===== تشغيل أولي =====
+// تشغيل أولي
 getTonPrice();
