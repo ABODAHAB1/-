@@ -1,6 +1,0 @@
-[functions]
-node_bundler = "esbuild"
-
-[[scheduled]]
-name = "sendPrice"
-cron = "*/1 * * * *"
