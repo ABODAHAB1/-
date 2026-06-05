@@ -1,35 +1,19 @@
 <!DOCTYPE html>
 <html lang="ar">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>سعر TON - أبوالدهب</title>
-  <link rel="stylesheet" href="style.css" />
+  <meta charset="UTF-8">
+  <title>لوحة استقبال الطلبات - صيدلية اسلام فتحي</title>
+  <link rel="stylesheet" href="style.css">
 </head>
+
 <body>
-  <header class="topbar">
-    <h1>💹 منصة أبوالدهب</h1>
-    <p>عرض مباشر لسعر TON — سطر بالدولار ثم بالجنيه المصري</p>
-  </header>
 
-  <main>
-    <section id="cards" class="cards" aria-live="polite">
-      <!-- بطاقة TON ستُعرض هنا -->
-    </section>
+  <div class="container">
+    <h1>📥 لوحة استقبال الطلبات</h1>
+    <p>صيدلية اسلام فتحي</p>
 
-    <section class="controls">
-      <button id="refresh-btn" class="btn">🔄 تحديث الآن</button>
-      <button id="send-btn" class="btn primary">📤 إرسال سعر التون للبوت</button>
-      <label style="margin-left:12px;color:#ddd;font-weight:600">
-        <input id="auto-send" type="checkbox" /> إرسال تلقائي كل دقيقة
-      </label>
-      <div id="status" class="status"></div>
-    </section>
-  </main>
-
-  <footer class="footer">
-    <small>© 2026 - أبوالدهب | منصة أسعار العملات</small>
-  </footer>
+    <div id="orders"></div>
+  </div>
 
   <script src="script.js"></script>
 </body>
